@@ -138,7 +138,43 @@ static ALenum alSourceAddNotificationExt(ALuint sid, ALuint notificationID, alSo
 }
 @end
 
+@interface AudioEngineTimer : NSObject {
+}
+
+@property (nonatomic, retain) NSTimer *timer;
+
+- (void) startTimer;
+- (void) stopTimer;
+
+@end
+
+@implementation AudioEngineTimer
+
+- (void)startTimer {
+    [self stopTimer];
+    self.timer = [NSTimer scheduledTimerWithTimeInterval:0.05
+                                                  target:self
+                                                selector:@selector(triggerUpdateFunction)
+                                                userInfo:nil
+                                                 repeats:YES];
+}
+
+- (void)stopTimer {
+    if (self.timer) {
+        [self.timer invalidate];
+        self.timer = nil;
+    }
+}
+
+- (void)triggerUpdateFunction {
+    s_instance->update(0);
+}
+
+@end
+
+
 static id s_AudioEngineSessionHandler = nullptr;
+static id s_AudioEngineTimer = nullptr;
 #endif
 
 ALvoid AudioEngineImpl::myAlSourceNotificationCallback(ALuint sid, ALuint notificationID, ALvoid *userData) {
@@ -163,9 +199,10 @@ AudioEngineImpl::AudioEngineImpl()
 }
 
 AudioEngineImpl::~AudioEngineImpl() {
-    if (auto sche = _scheduler.lock()) {
-        sche->unschedule("AudioEngine", this);
-    }
+//    if (auto sche = _scheduler.lock()) {
+//        sche->unschedule("AudioEngine", this);
+//    }
+    [s_AudioEngineTimer stopTimer];
 
     if (s_ALContext) {
         alDeleteSources(MAX_AUDIOINSTANCES, _alSources);
@@ -181,6 +218,7 @@ AudioEngineImpl::~AudioEngineImpl() {
 
 #if CC_PLATFORM == CC_PLATFORM_IOS
     [s_AudioEngineSessionHandler release];
+    [s_AudioEngineTimer release];
 #endif
     s_instance = nullptr;
 }
@@ -190,6 +228,7 @@ bool AudioEngineImpl::init() {
     do {
 #if CC_PLATFORM == CC_PLATFORM_IOS
         s_AudioEngineSessionHandler = [[AudioEngineSessionHandler alloc] init];
+        s_AudioEngineTimer = [[AudioEngineTimer alloc] init];
 #endif
 
         s_ALDevice = alcOpenDevice(nullptr);
@@ -341,9 +380,10 @@ int AudioEngineImpl::play2d(const ccstd::string &filePath, bool loop, float volu
 
     if (_lazyInitLoop) {
         _lazyInitLoop = false;
-        if (auto sche = _scheduler.lock()) {
-            sche->schedule(CC_CALLBACK_1(AudioEngineImpl::update, this), this, 0.05f, false, "AudioEngine");
-        }
+//        if (auto sche = _scheduler.lock()) {
+//            sche->schedule(CC_CALLBACK_1(AudioEngineImpl::update, this), this, 0.05f, false, "AudioEngine");
+//        }
+        [s_AudioEngineTimer startTimer];
     }
 
     return _currentAudioID++;
@@ -614,9 +654,10 @@ void AudioEngineImpl::update(float dt) {
 
     if (_audioPlayers.empty()) {
         _lazyInitLoop = true;
-        if (auto sche = _scheduler.lock()) {
-            sche->unschedule("AudioEngine", this);
-        }
+//        if (auto sche = _scheduler.lock()) {
+//            sche->unschedule("AudioEngine", this);
+//        }
+        [s_AudioEngineTimer stopTimer];
     }
 }
 

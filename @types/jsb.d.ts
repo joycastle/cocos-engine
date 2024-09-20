@@ -206,6 +206,8 @@ declare namespace jsb {
          * @param channelID: ChannelID which should smaller than channel count, start from 0
          */
         export function getOriginalPCMBuffer(url: string, channelID: number): ArrayBuffer | undefined;
+
+        export function end();
     }
 
     class NativePOD {

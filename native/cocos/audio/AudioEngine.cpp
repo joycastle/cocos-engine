@@ -232,7 +232,7 @@ int AudioEngine::play2d(const ccstd::string &filePath, bool loop, float volume, 
             volume = 1.0F;
         }
 
-        ret = sAudioEngineImpl->play2d(filePath, loop, volume);
+        ret = sAudioEngineImpl->play2d(filePath, loop, volume * sVolumeFactor);
         if (ret != INVALID_AUDIO_ID) {
             sAudioPathIDMap[filePath].push_back(ret);
             auto it = sAudioPathIDMap.find(filePath);
@@ -289,6 +289,10 @@ void AudioEngine::setVolumeFactor(float factor) {
     for (auto &item : sAudioIDInfoMap) {
         sAudioEngineImpl->setVolume(item.first, item.second.volume * sVolumeFactor);
     }
+}
+
+float AudioEngine::getVolumeFactor() {
+    return sVolumeFactor;
 }
 
 void AudioEngine::pause(int audioID) {

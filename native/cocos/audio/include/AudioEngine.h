@@ -155,6 +155,7 @@ public:
      * @param factor, Volume factor(range from 0.0 to 1.0).
      */
     static void setVolumeFactor(float factor);
+    static float getVolumeFactor();
 
     /**
      * Gets the volume value of an audio instance.
