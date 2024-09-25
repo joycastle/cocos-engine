@@ -161,7 +161,7 @@ void Engine::destroy() {
     CCObject::deferredDestroy();
 
 #if CC_USE_AUDIO
-    AudioEngine::end();
+    // AudioEngine::end();
 #endif
 
     EventDispatcher::destroy();
