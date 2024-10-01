@@ -71,6 +71,8 @@ static ALenum alSourceAddNotificationExt(ALuint sid, ALuint notificationID, alSo
 - (id)init;
 - (void)handleInterruption:(NSNotification *)notification;
 - (void)resumeAudio:(NSNotification *)notification;
+- (void)pauseAudioBeforeAd:(NSNotification *)notification;
+- (void)resumeAudioAfterAd:(NSNotification *)notification;
 - (void)reactiveAudio;
 
 @end
@@ -83,6 +85,14 @@ static ALenum alSourceAddNotificationExt(ALuint sid, ALuint notificationID, alSo
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleInterruption:) name:AVAudioSessionInterruptionNotification object:[AVAudioSession sharedInstance]];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(resumeAudio:) name:UIApplicationDidBecomeActiveNotification object:nil];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(resumeAudio:) name:UIApplicationWillEnterForegroundNotification object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(pauseAudioBeforeAd:)
+                                                     name:@"pause_audio_before_ad"
+                                                   object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(resumeAudioAfterAd:)
+                                                     name:@"resume_audio_after_ad"
+                                                   object:nil];
         
         BOOL success = [[AVAudioSession sharedInstance]
                         setCategory:AVAudioSessionCategoryAmbient
@@ -113,6 +123,15 @@ static ALenum alSourceAddNotificationExt(ALuint sid, ALuint notificationID, alSo
     [self reactiveAudio];
 }
 
+- (void)pauseAudioBeforeAd:(NSNotification *)notification {
+    alcMakeContextCurrent(nullptr);
+}
+
+- (void)resumeAudioAfterAd:(NSNotification *)notification {
+    self.needReactiveContext = true;
+    [self reactiveAudio];
+}
+
 - (void)handleInterruption:(NSNotification *)notification {
 
     if ([notification.name isEqualToString:AVAudioSessionInterruptionNotification]) {
@@ -133,6 +152,8 @@ static ALenum alSourceAddNotificationExt(ALuint sid, ALuint notificationID, alSo
     [[NSNotificationCenter defaultCenter] removeObserver:self name:AVAudioSessionInterruptionNotification object:nil];
     [[NSNotificationCenter defaultCenter] removeObserver:self name:UIApplicationDidBecomeActiveNotification object:nil];
     [[NSNotificationCenter defaultCenter] removeObserver:self name:UIApplicationWillResignActiveNotification object:nil];
+    [[NSNotificationCenter defaultCenter] removeObserver:self name:@"pause_audio_before_ad" object:nil];
+    [[NSNotificationCenter defaultCenter] removeObserver:self name:@"resume_audio_after_ad" object:nil];
 
     [super dealloc];
 }
