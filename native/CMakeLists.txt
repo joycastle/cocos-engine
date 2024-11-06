@@ -1212,6 +1212,7 @@ cocos_source_files(
                  cocos/renderer/gfx-base/GFXQueryPool.h
                  cocos/renderer/gfx-base/GFXRenderPass.cpp
                  cocos/renderer/gfx-base/GFXRenderPass.h
+                 cocos/renderer/gfx-base/GFXSamplerUtils.h
                  cocos/renderer/gfx-base/GFXShader.cpp
                  cocos/renderer/gfx-base/GFXShader.h
                  cocos/renderer/gfx-base/GFXSwapchain.cpp
@@ -2348,6 +2349,7 @@ if(USE_MIDDLEWARE)
                                      cocos/editor-support/spine/spine.h
             NO_WERROR                cocos/editor-support/spine/SpineObject.cpp
                                      cocos/editor-support/spine/SpineObject.h
+                                     cocos/editor-support/spine/SpineString.cpp
                                      cocos/editor-support/spine/SpineString.h
             NO_WERROR                cocos/editor-support/spine/TextureLoader.cpp
                                      cocos/editor-support/spine/TextureLoader.h

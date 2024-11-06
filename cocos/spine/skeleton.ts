@@ -38,7 +38,7 @@ import { legacyCC } from '../core/global-exports';
 import { SkeletonSystem } from './skeleton-system';
 import { RenderEntity, RenderEntityType } from '../2d/renderer/render-entity';
 import { AttachUtil } from './attach-util';
-import spine from './lib/spine-core.js';
+import spine from './lib/spine-core';
 import { VertexEffectDelegate } from './vertex-effect-delegate';
 import SkeletonCache, { AnimationCache, AnimationFrame, SkeletonCacheItemInfo } from './skeleton-cache';
 import { TrackEntryListeners } from './track-entry-listeners';
@@ -62,7 +62,7 @@ export const timeScale = 1.0;
  * @en Enum for animation cache mode type.
  * @zh Spine 动画缓存类型。
  */
-export enum AnimationCacheMode {
+export enum SpineAnimationCacheMode {
     /**
      * @en Unset mode.
      * @zh 未设置模式。
@@ -84,7 +84,11 @@ export enum AnimationCacheMode {
      */
     PRIVATE_CACHE = 2,
 }
-ccenum(AnimationCacheMode);
+ccenum(SpineAnimationCacheMode);
+
+// To keep the compatibility, don't use it internally, otherwise, enum value may be inlined to wrong value.
+// Use AnimationCacheMode instead.
+export const AnimationCacheMode = SpineAnimationCacheMode;
 
 interface AnimationItem {
     animationName: string;
@@ -103,10 +107,13 @@ ccenum(DefaultSkinsEnum);
 /**
  * @engineInternal
  */
-export enum DefaultAnimsEnum {
+export enum SpineDefaultAnimsEnum {
     '<None>' = 0
 }
-ccenum(DefaultAnimsEnum);
+ccenum(SpineDefaultAnimsEnum);
+// To keep the compatibility, don't use it internally, otherwise, enum value may be inlined to wrong value.
+// Use SpineDefaultAnimsEnum instead.
+export const DefaultAnimsEnum = SpineDefaultAnimsEnum;
 
 /**
  * @engineInternal
@@ -197,7 +204,7 @@ js.setClassAlias(SpineSocket, 'sp.Skeleton.SpineSocket');
 @executeInEditMode
 export class Skeleton extends UIRenderer {
     public static SpineSocket = SpineSocket;
-    public static AnimationCacheMode = AnimationCacheMode;
+    public static AnimationCacheMode = SpineAnimationCacheMode;
 
     @serializable
     protected _skeletonData: SkeletonData | null = null;
@@ -217,9 +224,9 @@ export class Skeleton extends UIRenderer {
     @serializable
     protected _timeScale = 1;
     @serializable
-    protected _preCacheMode: AnimationCacheMode = AnimationCacheMode.UNSET;
+    protected _preCacheMode: SpineAnimationCacheMode = SpineAnimationCacheMode.UNSET;
     @serializable
-    protected _cacheMode = AnimationCacheMode.REALTIME;
+    protected _cacheMode = SpineAnimationCacheMode.REALTIME;
     @serializable
     protected _sockets: SpineSocket[] = [];
     @serializable
@@ -419,7 +426,7 @@ export class Skeleton extends UIRenderer {
      * @engineInternal
      */
     @displayName('Animation')
-    @type(DefaultAnimsEnum)
+    @type(SpineDefaultAnimsEnum)
     @tooltip('i18n:COMPONENT.skeleton.animation')
     get _animationIndex (): number {
         const animationName = EDITOR_NOT_IN_PREVIEW ? this.defaultAnimation : this.animation;
@@ -471,11 +478,11 @@ export class Skeleton extends UIRenderer {
     @displayName('Animation Cache Mode')
     @tooltip('i18n:COMPONENT.skeleton.animation_cache_mode')
     @editable
-    @type(AnimationCacheMode)
-    get defaultCacheMode (): AnimationCacheMode {
+    @type(SpineAnimationCacheMode)
+    get defaultCacheMode (): SpineAnimationCacheMode {
         return this._cacheMode;
     }
-    set defaultCacheMode (mode: AnimationCacheMode) {
+    set defaultCacheMode (mode: SpineAnimationCacheMode) {
         this._cacheMode = mode;
         this.setAnimationCacheMode(this._cacheMode);
     }
@@ -636,7 +643,6 @@ export class Skeleton extends UIRenderer {
     @override
     @type(Material)
     @displayOrder(0)
-    @displayName('CustomMaterial')
     get customMaterial (): Material | null {
         return this._customMaterial;
     }
@@ -710,7 +716,7 @@ export class Skeleton extends UIRenderer {
         this._slotTextures = null;
         this._cachedSockets.clear();
         this._socketNodes.clear();
-        //if (this._cacheMode == AnimationCacheMode.PRIVATE_CACHE) this._animCache?.destroy();
+        //if (this._cacheMode == SpineAnimationCacheMode.PRIVATE_CACHE) this._animCache?.destroy();
         this._animCache = null;
         SkeletonSystem.getInstance().remove(this);
         if (!JSB && this._instance) {
@@ -792,9 +798,9 @@ export class Skeleton extends UIRenderer {
     public setSkeletonData (skeletonData: spine.SkeletonData): void {
         if (!EDITOR_NOT_IN_PREVIEW) {
             const preSkeletonCache = this._skeletonCache;
-            if (this._cacheMode === AnimationCacheMode.SHARED_CACHE) {
+            if (this._cacheMode === SpineAnimationCacheMode.SHARED_CACHE) {
                 this._skeletonCache = SkeletonCache.sharedCache;
-            } else if (this._cacheMode === AnimationCacheMode.PRIVATE_CACHE) {
+            } else if (this._cacheMode === SpineAnimationCacheMode.PRIVATE_CACHE) {
                 this._skeletonCache = new SkeletonCache();
                 this._skeletonCache.enablePrivateMode();
             } else {
@@ -813,6 +819,8 @@ export class Skeleton extends UIRenderer {
             if (this._skeletonInfo !== skeletonInfo) {
                 this._destroySkeletonInfo(this._skeletonCache);
                 this._skeletonInfo = this._skeletonCache!.createSkeletonInfo(this._skeletonData!);
+            }
+            if (this._skeletonInfo) {
                 this._skeleton = this._skeletonInfo.skeleton!;
             }
         } else {
@@ -901,7 +909,8 @@ export class Skeleton extends UIRenderer {
             logID(7511);
             return null;
         }
-        const animation = this._skeleton.data.findAnimation(name);
+        const skeleton = this._skeleton;
+        const animation = skeleton ? skeleton.data.findAnimation(name) : null;
         if (!animation) {
             logID(7509, name);
             return null;
@@ -917,7 +926,7 @@ export class Skeleton extends UIRenderer {
             let cache = this._skeletonCache.getAnimationCache(this._skeletonData!.uuid, name);
             if (!cache) {
                 cache = this._skeletonCache.initAnimationCache(this.skeletonData!.uuid, this._skeletonData!, name);
-                cache?.setSkin(this._skinName);
+                if (cache && this._skinName) cache.setSkin(this._skinName);
             }
             if (cache) {
                 this._animationName = name;
@@ -1010,6 +1019,7 @@ export class Skeleton extends UIRenderer {
      * @param skinName @en The name of skin. @zh 皮肤名称。
      */
     public setSkin (name: string): void {
+        if (!name) return;
         if (this._skeleton) this._skeleton.setSkinByName(name);
         this._instance!.setSkin(name);
         if (this.isAnimationCached()) {
@@ -1249,7 +1259,7 @@ export class Skeleton extends UIRenderer {
         if (this.skeletonData) {
             animEnum = this.skeletonData.getAnimsEnum();
         } else {
-            animEnum = DefaultAnimsEnum;
+            animEnum = SpineDefaultAnimsEnum;
         }
 
         // reset enum type
@@ -1322,7 +1332,7 @@ export class Skeleton extends UIRenderer {
      */
     public isAnimationCached (): boolean {
         if (EDITOR_NOT_IN_PREVIEW) return false;
-        return this._cacheMode !== AnimationCacheMode.REALTIME;
+        return this._cacheMode !== SpineAnimationCacheMode.REALTIME;
     }
     /**
      * @en
@@ -1335,7 +1345,7 @@ export class Skeleton extends UIRenderer {
      * @example
      * skeleton.setAnimationCacheMode(sp.Skeleton.AnimationCacheMode.SHARED_CACHE);
      */
-    public setAnimationCacheMode (cacheMode: AnimationCacheMode): void {
+    public setAnimationCacheMode (cacheMode: SpineAnimationCacheMode): void {
         if (this._preCacheMode  !== cacheMode) {
             this._cacheMode = cacheMode;
             this._preCacheMode = cacheMode;

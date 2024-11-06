@@ -35,7 +35,7 @@ import { Root } from '../../root';
 import { Node } from '../../scene-graph';
 import { Stage, StencilManager } from './stencil-manager';
 import { DrawBatch2D } from './draw-batch';
-import { ModelLocalBindings, UBOLocal } from '../../rendering/define';
+import { ModelLocalBindings, UBOLocal, UBOLocalEnum } from '../../rendering/define';
 import { SpriteFrame } from '../assets';
 import { TextureBase } from '../../asset/assets/texture-base';
 import { IBatcher } from './i-batcher';
@@ -44,12 +44,13 @@ import { getAttributeStride, vfmt, vfmtPosUvColor } from './vertex-format';
 import { updateOpacity } from '../assembler/utils';
 import { BaseRenderData, MeshRenderData } from './render-data';
 import { UIMeshRenderer } from '../components/ui-mesh-renderer';
-import { NativeBatcher2d, NativeUIMeshBuffer } from './native-2d';
+import { NativeBatcher2d } from './native-2d';
 import { MeshBuffer } from './mesh-buffer';
 import { scene } from '../../render-scene';
 import { builtinResMgr } from '../../asset/asset-manager';
 import { RenderingSubMesh } from '../../asset/assets';
 import { IAssembler } from './base';
+import type { Director } from '../../game/director';
 
 const _dsInfo = new DescriptorSetInfo(null!);
 const m4_1 = new Mat4();
@@ -160,7 +161,7 @@ export class Batcher2D implements IBatcher {
         StencilManager.sharedManager!.destroy();
 
         if (this._maskClearModel && this._maskModelMesh) {
-            cclegacy.director.root.destroyModel(this._maskClearModel);
+            (cclegacy.director.root as Root).destroyModel(this._maskClearModel);
             this._maskModelMesh.destroy();
         }
         if (this._maskClearMtl) {
@@ -571,7 +572,7 @@ export class Batcher2D implements IBatcher {
             dssHash = StencilManager.sharedManager!.getStencilHash(comp.stencilStage);
         }
 
-        const stamp: number = cclegacy.director.getTotalFrames();
+        const stamp: number = (cclegacy.director as Director).getTotalFrames();
         if (model) {
             model.updateTransform(stamp);
             model.updateUBOs(stamp);
@@ -639,7 +640,7 @@ export class Batcher2D implements IBatcher {
         if (!mat) {
             return;
         }
-        let ia;
+        let ia: InputAssembler | undefined;
         const rd = this._currRenderData as MeshRenderData;
         const accessor = this._staticVBBuffer;
         // Previous batch using mesh buffer
@@ -866,7 +867,10 @@ export class Batcher2D implements IBatcher {
     // TODO: Not a good way to do the job
     // Although it's a private method, it is invoked in text-processing.ts and texture-base.ts
     // by legacyCC.director.root.batcher2D._releaseDescriptorSetCache
-    private _releaseDescriptorSetCache (textureHash: number | Texture, sampler: Sampler | null = null): void {
+    /**
+     * @engineInternal
+     */
+    public _releaseDescriptorSetCache (textureHash: number | Texture | null, sampler: Sampler | null = null): void {
         if (JSB) {
             this._nativeObj.releaseDescriptorSetCache(textureHash as Texture, sampler as Sampler);
         } else {
@@ -879,7 +883,7 @@ export class Batcher2D implements IBatcher {
         if (!this._maskClearModel) {
             this._maskClearMtl = builtinResMgr.get<Material>('default-clear-stencil');
 
-            this._maskClearModel = cclegacy.director.root.createModel(scene.Model);
+            this._maskClearModel = (cclegacy.director.root as Root).createModel(scene.Model);
             const stride = getAttributeStride(vfmt);
             const gfxDevice: Device = deviceManager.gfxDevice;
             const vertexBuffer = gfxDevice.createBuffer(new BufferInfo(
@@ -903,7 +907,7 @@ export class Batcher2D implements IBatcher {
             this._maskModelMesh = new RenderingSubMesh([vertexBuffer], vfmt, PrimitiveMode.TRIANGLE_LIST, indexBuffer);
             this._maskModelMesh.subMeshIdx = 0;
 
-            this._maskClearModel!.initSubModel(0, this._maskModelMesh, this._maskClearMtl);
+            this._maskClearModel.initSubModel(0, this._maskModelMesh, this._maskClearMtl);
         }
     }
 
@@ -925,7 +929,7 @@ export class Batcher2D implements IBatcher {
         }
 
         const model = this._maskClearModel!;
-        const stamp: number = cclegacy.director.getTotalFrames();
+        const stamp: number = (cclegacy.director as Director).getTotalFrames();
         if (model) {
             model.updateTransform(stamp);
             model.updateUBOs(stamp);
@@ -973,12 +977,12 @@ class LocalDescriptorSet  {
 
     constructor () {
         const device = deviceManager.gfxDevice;
-        this._localData = new Float32Array(UBOLocal.COUNT);
+        this._localData = new Float32Array(UBOLocalEnum.COUNT);
         this._localBuffer = device.createBuffer(new BufferInfo(
             BufferUsageBit.UNIFORM | BufferUsageBit.TRANSFER_DST,
             MemoryUsageBit.HOST | MemoryUsageBit.DEVICE,
-            UBOLocal.SIZE,
-            UBOLocal.SIZE,
+            UBOLocalEnum.SIZE,
+            UBOLocalEnum.SIZE,
         ));
     }
 
@@ -1040,7 +1044,7 @@ class LocalDescriptorSet  {
         }
         if (this._transformUpdate) {
             const worldMatrix = node.worldMatrix;
-            Mat4.toArray(this._localData!, worldMatrix, UBOLocal.MAT_WORLD_OFFSET);
+            Mat4.toArray(this._localData!, worldMatrix, UBOLocalEnum.MAT_WORLD_OFFSET);
 
             Mat4.invert(m4_1, worldMatrix);
             Mat4.transpose(m4_1, m4_1);
@@ -1052,7 +1056,7 @@ class LocalDescriptorSet  {
                 const factor = 1.0 / Math.sqrt(det);
                 Mat4.multiplyScalar(m4_1, m4_1, factor);
             }
-            Mat4.toArray(this._localData!, m4_1, UBOLocal.MAT_WORLD_IT_OFFSET);
+            Mat4.toArray(this._localData!, m4_1, UBOLocalEnum.MAT_WORLD_IT_OFFSET);
             this._localBuffer!.update(this._localData!);
             this._transformUpdate = false;
         }

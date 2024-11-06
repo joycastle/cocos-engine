@@ -29,7 +29,7 @@ import { BufferInfo, Buffer, BufferUsageBit, ClearFlagBit, Color, DescriptorSet,
     Device,
 } from '../../gfx';
 import { ReflectionProbe } from '../../render-scene/scene/reflection-probe';
-import { Camera, SKYBOX_FLAG } from '../../render-scene/scene/camera';
+import { Camera, SkyBoxFlagValue } from '../../render-scene/scene/camera';
 import { CSMLevel, ShadowType, Shadows } from '../../render-scene/scene/shadows';
 import { Light, LightType } from '../../render-scene/scene/light';
 import { DirectionalLight } from '../../render-scene/scene/directional-light';
@@ -37,7 +37,7 @@ import { RangedDirectionalLight } from '../../render-scene/scene/ranged-directio
 import { PointLight } from '../../render-scene/scene/point-light';
 import { SphereLight } from '../../render-scene/scene/sphere-light';
 import { SpotLight } from '../../render-scene/scene/spot-light';
-import { UBOForwardLight, supportsR32FloatTexture, supportsRGBA16HalfFloatTexture } from '../define';
+import { UBOForwardLightEnum, supportsR32FloatTexture, supportsRGBA16HalfFloatTexture } from '../define';
 import { BasicPipeline } from './pipeline';
 import {
     AttachmentType, LightInfo,
@@ -45,7 +45,7 @@ import {
 } from './types';
 import { Vec4, geometry, toRadian, cclegacy } from '../../core';
 import { RenderWindow } from '../../render-scene/core/render-window';
-import { RenderData, RenderGraph } from './render-graph';
+import { RasterPass, RenderData, RenderGraph } from './render-graph';
 import { WebPipeline } from './web-pipeline';
 import { DescriptorSetData, LayoutGraphData } from './layout-graph';
 import { AABB } from '../../core/geometry';
@@ -133,7 +133,7 @@ export function getLoadOpOfClearFlag (clearFlag: ClearFlagBit, attachment: Attac
     let loadOp = LoadOp.CLEAR;
     if (!(clearFlag & ClearFlagBit.COLOR)
         && attachment === AttachmentType.RENDER_TARGET) {
-        if (clearFlag & SKYBOX_FLAG) {
+        if (clearFlag & SkyBoxFlagValue.VALUE) {
             loadOp = LoadOp.CLEAR;
         } else {
             loadOp = LoadOp.LOAD;
@@ -617,15 +617,12 @@ function updateDefaultConstantBlock (blockId: number, sceneId: number, idxRD: nu
 }
 
 export function updatePerPassUBO (layout: string, sceneId: number, idxRD: number, user: RenderData): void {
-    const constantMap = user.constants;
-    const samplers = user.samplers;
-    const textures = user.textures;
-    const buffers = user.buffers;
+    const { constants, samplers, textures, buffers } = user;
     const webPip = cclegacy.director.root.pipeline as WebPipeline;
     const lg = webPip.layoutGraph;
     const descriptorSetData = getDescriptorSetDataFromLayout(layout)!;
     currBindBuffs.clear();
-    for (const [key, data] of constantMap) {
+    for (const [key, data] of constants) {
         let constantBlock = constantBlockMap.get(key);
         if (!constantBlock) {
             const currMemKey = Array.from(lg.constantIndex).find(([_, v]) => v === key)![0];
@@ -683,7 +680,6 @@ export function updatePerPassUBO (layout: string, sceneId: number, idxRD: number
             bindGlobalDesc(descriptorSet, bindId, value);
         }
     }
-    descriptorSet.update();
 }
 
 export function hashCombineKey (val): string {
@@ -765,14 +761,14 @@ export function SetLightUBO (
         luminanceLDR = rangedDirLight.illuminanceLDR;
     }
 
-    let index = offset + UBOForwardLight.LIGHT_POS_OFFSET;
+    let index = offset + UBOForwardLightEnum.LIGHT_POS_OFFSET;
     buffer.set(vec4Array, index);
 
-    index = offset + UBOForwardLight.LIGHT_SIZE_RANGE_ANGLE_OFFSET;
+    index = offset + UBOForwardLightEnum.LIGHT_SIZE_RANGE_ANGLE_OFFSET;
     vec4Array.set([size, range, 0, 0]);
     buffer.set(vec4Array, index);
 
-    index = offset + UBOForwardLight.LIGHT_COLOR_OFFSET;
+    index = offset + UBOForwardLightEnum.LIGHT_COLOR_OFFSET;
     const color = light ? light.color : new Color();
     if (light && light.useColorTemperature) {
         const tempRGB = light.colorTemperatureRGB;
@@ -793,50 +789,50 @@ export function SetLightUBO (
 
     switch (light ? light.type : LightType.UNKNOWN) {
     case LightType.SPHERE:
-        buffer[offset + UBOForwardLight.LIGHT_SIZE_RANGE_ANGLE_OFFSET + 2] = 0;
-        buffer[offset + UBOForwardLight.LIGHT_SIZE_RANGE_ANGLE_OFFSET + 3] = 0;
+        buffer[offset + UBOForwardLightEnum.LIGHT_SIZE_RANGE_ANGLE_OFFSET + 2] = 0;
+        buffer[offset + UBOForwardLightEnum.LIGHT_SIZE_RANGE_ANGLE_OFFSET + 3] = 0;
         break;
     case LightType.SPOT: {
         const spotLight = light as SpotLight;
-        buffer[offset + UBOForwardLight.LIGHT_SIZE_RANGE_ANGLE_OFFSET + 2] = spotLight.spotAngle;
-        buffer[offset + UBOForwardLight.LIGHT_SIZE_RANGE_ANGLE_OFFSET + 3] =                (shadowInfo && shadowInfo.enabled
+        buffer[offset + UBOForwardLightEnum.LIGHT_SIZE_RANGE_ANGLE_OFFSET + 2] = spotLight.spotAngle;
+        buffer[offset + UBOForwardLightEnum.LIGHT_SIZE_RANGE_ANGLE_OFFSET + 3] =                (shadowInfo && shadowInfo.enabled
                  && spotLight.shadowEnabled
                  && shadowInfo.type === ShadowType.ShadowMap) ? 1.0 : 0.0;
 
-        index = offset + UBOForwardLight.LIGHT_DIR_OFFSET;
+        index = offset + UBOForwardLightEnum.LIGHT_DIR_OFFSET;
         const direction = spotLight.direction;
         buffer[index++] = direction.x;
         buffer[index++] = direction.y;
         buffer[index] = direction.z;
 
-        buffer[offset + UBOForwardLight.LIGHT_BOUNDING_SIZE_VS_OFFSET + 0] = 0;
-        buffer[offset + UBOForwardLight.LIGHT_BOUNDING_SIZE_VS_OFFSET + 1] = 0;
-        buffer[offset + UBOForwardLight.LIGHT_BOUNDING_SIZE_VS_OFFSET + 2] = 0;
-        buffer[offset + UBOForwardLight.LIGHT_BOUNDING_SIZE_VS_OFFSET + 3] = spotLight.angleAttenuationStrength;
+        buffer[offset + UBOForwardLightEnum.LIGHT_BOUNDING_SIZE_VS_OFFSET + 0] = 0;
+        buffer[offset + UBOForwardLightEnum.LIGHT_BOUNDING_SIZE_VS_OFFSET + 1] = 0;
+        buffer[offset + UBOForwardLightEnum.LIGHT_BOUNDING_SIZE_VS_OFFSET + 2] = 0;
+        buffer[offset + UBOForwardLightEnum.LIGHT_BOUNDING_SIZE_VS_OFFSET + 3] = spotLight.angleAttenuationStrength;
     } break;
     case LightType.POINT:
-        buffer[offset + UBOForwardLight.LIGHT_SIZE_RANGE_ANGLE_OFFSET + 2] = 0;
-        buffer[offset + UBOForwardLight.LIGHT_SIZE_RANGE_ANGLE_OFFSET + 3] = 0;
+        buffer[offset + UBOForwardLightEnum.LIGHT_SIZE_RANGE_ANGLE_OFFSET + 2] = 0;
+        buffer[offset + UBOForwardLightEnum.LIGHT_SIZE_RANGE_ANGLE_OFFSET + 3] = 0;
         break;
     case LightType.RANGED_DIRECTIONAL: {
         const rangedDirLight = light as RangedDirectionalLight;
         const right = rangedDirLight.right;
-        buffer[offset + UBOForwardLight.LIGHT_SIZE_RANGE_ANGLE_OFFSET + 0] = right.x;
-        buffer[offset + UBOForwardLight.LIGHT_SIZE_RANGE_ANGLE_OFFSET + 1] = right.y;
-        buffer[offset + UBOForwardLight.LIGHT_SIZE_RANGE_ANGLE_OFFSET + 2] = right.z;
-        buffer[offset + UBOForwardLight.LIGHT_SIZE_RANGE_ANGLE_OFFSET + 3] = 0;
+        buffer[offset + UBOForwardLightEnum.LIGHT_SIZE_RANGE_ANGLE_OFFSET + 0] = right.x;
+        buffer[offset + UBOForwardLightEnum.LIGHT_SIZE_RANGE_ANGLE_OFFSET + 1] = right.y;
+        buffer[offset + UBOForwardLightEnum.LIGHT_SIZE_RANGE_ANGLE_OFFSET + 2] = right.z;
+        buffer[offset + UBOForwardLightEnum.LIGHT_SIZE_RANGE_ANGLE_OFFSET + 3] = 0;
 
         const direction = rangedDirLight.direction;
-        buffer[offset + UBOForwardLight.LIGHT_DIR_OFFSET + 0] = direction.x;
-        buffer[offset + UBOForwardLight.LIGHT_DIR_OFFSET + 1] = direction.y;
-        buffer[offset + UBOForwardLight.LIGHT_DIR_OFFSET + 2] = direction.z;
-        buffer[offset + UBOForwardLight.LIGHT_DIR_OFFSET + 3] = 0;
+        buffer[offset + UBOForwardLightEnum.LIGHT_DIR_OFFSET + 0] = direction.x;
+        buffer[offset + UBOForwardLightEnum.LIGHT_DIR_OFFSET + 1] = direction.y;
+        buffer[offset + UBOForwardLightEnum.LIGHT_DIR_OFFSET + 2] = direction.z;
+        buffer[offset + UBOForwardLightEnum.LIGHT_DIR_OFFSET + 3] = 0;
 
         const scale = rangedDirLight.scale;
-        buffer[offset + UBOForwardLight.LIGHT_BOUNDING_SIZE_VS_OFFSET + 0] = scale.x * 0.5;
-        buffer[offset + UBOForwardLight.LIGHT_BOUNDING_SIZE_VS_OFFSET + 1] = scale.y * 0.5;
-        buffer[offset + UBOForwardLight.LIGHT_BOUNDING_SIZE_VS_OFFSET + 2] = scale.z * 0.5;
-        buffer[offset + UBOForwardLight.LIGHT_BOUNDING_SIZE_VS_OFFSET + 3] = 0;
+        buffer[offset + UBOForwardLightEnum.LIGHT_BOUNDING_SIZE_VS_OFFSET + 0] = scale.x * 0.5;
+        buffer[offset + UBOForwardLightEnum.LIGHT_BOUNDING_SIZE_VS_OFFSET + 1] = scale.y * 0.5;
+        buffer[offset + UBOForwardLightEnum.LIGHT_BOUNDING_SIZE_VS_OFFSET + 2] = scale.z * 0.5;
+        buffer[offset + UBOForwardLightEnum.LIGHT_BOUNDING_SIZE_VS_OFFSET + 3] = 0;
     } break;
     default:
         break;
@@ -865,4 +861,47 @@ export function getSubpassOrPassID (sceneId: number, rg: RenderGraph, lg: Layout
         }
     }
     return layoutId;
+}
+
+export function genHashValue (pass: RasterPass): void {
+    let hashCode = '';
+    for (const [name, raster] of pass.rasterViews) {
+        hashCode += hashCombineKey(name);
+        hashCode += hashCombineKey(raster.slotName);
+        hashCode += hashCombineKey(raster.accessType);
+        hashCode += hashCombineKey(raster.attachmentType);
+        hashCode += hashCombineKey(raster.loadOp);
+        hashCode += hashCombineKey(raster.storeOp);
+        hashCode += hashCombineKey(raster.clearFlags);
+        hashCode += hashCombineKey(raster.clearColor.x);
+        hashCode += hashCombineKey(raster.clearColor.y);
+        hashCode += hashCombineKey(raster.clearColor.z);
+        hashCode += hashCombineKey(raster.clearColor.w);
+        hashCode += hashCombineKey(raster.slotID);
+        hashCode += hashCombineKey(raster.shaderStageFlags);
+    }
+    for (const [name, computes] of pass.computeViews) {
+        hashCode += hashCombineKey(name);
+        for (const compute of computes) {
+            hashCode += hashCombineKey(compute.name);
+            hashCode += hashCombineKey(compute.accessType);
+            hashCode += hashCombineKey(compute.clearFlags);
+            hashCode += hashCombineKey(compute.clearValueType);
+            hashCode += hashCombineKey(compute.clearValue.x);
+            hashCode += hashCombineKey(compute.clearValue.y);
+            hashCode += hashCombineKey(compute.clearValue.z);
+            hashCode += hashCombineKey(compute.clearValue.w);
+            hashCode += hashCombineKey(compute.shaderStageFlags);
+        }
+    }
+    hashCode += hashCombineKey(pass.width);
+    hashCode += hashCombineKey(pass.height);
+    hashCode += hashCombineKey(pass.viewport.left);
+    hashCode += hashCombineKey(pass.viewport.top);
+    hashCode += hashCombineKey(pass.viewport.width);
+    hashCode += hashCombineKey(pass.viewport.height);
+    hashCode += hashCombineKey(pass.viewport.minDepth);
+    hashCode += hashCombineKey(pass.viewport.maxDepth);
+    hashCode += hashCombineKey(pass.showStatistics ? 1 : 0);
+    pass.hashValue = hashCombineStr(hashCode);
 }

@@ -57,7 +57,7 @@ ccenum(DefaultAnimsEnum);
 enum DefaultCacheMode {
     REALTIME = 0,
 }
-ccenum(DefaultAnimsEnum);
+ccenum(DefaultCacheMode);
 
 /**
  * @en Control animation speed, should be larger than 0.
@@ -699,7 +699,6 @@ export class ArmatureDisplay extends UIRenderer {
     @override
     @type(Material)
     @displayOrder(0)
-    @displayName('CustomMaterial')
     get customMaterial (): Material | null {
         return this._customMaterial;
     }

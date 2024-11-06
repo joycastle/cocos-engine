@@ -1,6 +1,7 @@
 import { Mat4, RecyclePool, IVec4Like, IMat4Like, IVec2Like,
     Color as CoreColor, assert, cclegacy, Quat, Vec4, Vec2, Vec3, toRadian } from '../../core';
-import { Color, CommandBuffer, DescriptorSet, Buffer, Device, PipelineState, RenderPass, Sampler, Texture, deviceManager } from '../../gfx';
+import { Color, CommandBuffer, DescriptorSet, Buffer, Device, PipelineState, RenderPass,
+    Sampler, Texture, deviceManager, Shader, InputAssembler } from '../../gfx';
 import { IMacroPatch, Pass, RenderScene } from '../../render-scene';
 import { Camera, CSMLevel, DirectionalLight, Light, LightType, Model, PCFType, PointLight,
     RangedDirectionalLight, Shadows, ShadowType, SphereLight, SpotLight, SubModel } from '../../render-scene/scene';
@@ -653,9 +654,6 @@ export class WebSetter implements Setter {
         const layoutName = this.getParentLayout();
         setCameraUBOValues(this, camera, pipeline.pipelineSceneData as PipelineSceneData, camera.scene, layoutName);
     }
-    public setBuiltinShadowMapConstants (light: Light, numLevels?: number): void {
-        setShadowUBOView(this, null, this.getParentLayout());
-    }
     public setBuiltinDirectionalLightFrustumConstants (camera: Camera, light: DirectionalLight, csmLevel = 0): void {
         setShadowUBOLightView(this, camera, light, csmLevel);
     }
@@ -663,7 +661,7 @@ export class WebSetter implements Setter {
         setShadowUBOLightView(this, null, light, 0);
     }
     public setBuiltinDirectionalLightConstants (light: DirectionalLight, camera: Camera): void {
-        this.setBuiltinShadowMapConstants(light);
+        setShadowUBOView(this, null, this.getParentLayout());
     }
     public setBuiltinSphereLightConstants (light: SphereLight, camera: Camera): void {
         const director = cclegacy.director;
@@ -903,48 +901,37 @@ export class RenderDrawQueue {
 }
 
 export class RenderInstancingQueue {
-    passInstances: Map<Pass, number> = new Map<Pass, number>();
-    instanceBuffers: Array<InstancedBuffer> = new Array<InstancedBuffer>();
-
+    /**
+     * @en A set of instanced buffer
+     * @zh Instance 合批缓存集合。
+     */
+    public queue = new Set<InstancedBuffer>();
     empty (): boolean {
-        return this.passInstances.size === 0;
+        return this.queue.size === 0;
     }
 
     add (pass: Pass, subModel: SubModel, passID: number): void {
-        const iter = this.passInstances.get(pass);
-        if (iter === undefined) {
-            const instanceBufferID = this.passInstances.size;
-            if (instanceBufferID >= this.instanceBuffers.length) {
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-                this.instanceBuffers.push(new InstancedBuffer(pass));
-            }
-            this.passInstances.set(pass, instanceBufferID);
-
-            const instanceBuffer = this.instanceBuffers[instanceBufferID];
-            instanceBuffer.pass = pass;
-            const instances = instanceBuffer.instances;
-        }
-
-        const instancedBuffer = this.instanceBuffers[this.passInstances.get(pass)!];
+        const instancedBuffer = pass.getInstancedBuffer();
         instancedBuffer.merge(subModel, passID);
+        this.queue.add(instancedBuffer);
     }
 
     clear (): void {
-        this.passInstances.clear();
-        const instanceBuffers = this.instanceBuffers;
-        instanceBuffers.forEach((instance) => {
-            instance.clear();
-        });
+        const it = this.queue.values(); let res = it.next();
+        while (!res.done) {
+            res.value.clear();
+            res = it.next();
+        }
+        this.queue.clear();
     }
 
     sort (): void {}
 
     uploadBuffers (cmdBuffer: CommandBuffer): void {
-        for (const [pass, bufferID] of this.passInstances.entries()) {
-            const instanceBuffer = this.instanceBuffers[bufferID];
-            if (instanceBuffer.hasPendingModels) {
-                instanceBuffer.uploadBuffers(cmdBuffer);
-            }
+        const it = this.queue.values(); let res = it.next();
+        while (!res.done) {
+            if (res.value.hasPendingModels) res.value.uploadBuffers(cmdBuffer);
+            res = it.next();
         }
     }
 
@@ -955,7 +942,7 @@ export class RenderInstancingQueue {
         offset = 0,
         dynamicOffsets: number[] | null = null,
     ): void {
-        const renderQueue = this.instanceBuffers;
+        const renderQueue = this.queue;
         for (const instanceBuffer of renderQueue) {
             if (!instanceBuffer.hasPendingModels) {
                 continue;
@@ -1020,6 +1007,34 @@ export class RenderQueueQuery {
         this.frustumCulledResultID = culledSourceIn;
         this.lightBoundsCulledResultID = lightBoundsCulledResultID;
         this.renderQueueTarget = renderQueueTargetIn;
+    }
+}
+
+export function recordCommand (
+    cmdBuffer: CommandBuffer,
+    _renderPass: RenderPass,
+    pass: Pass,
+    localDesc: DescriptorSet,
+    shader: Shader | null,
+    ia: InputAssembler | null,
+): void {
+    let pso!: PipelineState;
+    if (shader && ia) {
+        pso = PipelineStateManager.getOrCreatePipelineState(
+            deviceManager.gfxDevice,
+            pass,
+            shader,
+            _renderPass,
+            ia,
+        );
+    }
+    if (pso) {
+        const _ia = ia!;
+        cmdBuffer.bindPipelineState(pso);
+        cmdBuffer.bindDescriptorSet(SetIndex.MATERIAL, pass.descriptorSet);
+        cmdBuffer.bindDescriptorSet(SetIndex.LOCAL, localDesc);
+        cmdBuffer.bindInputAssembler(_ia);
+        cmdBuffer.draw(_ia);
     }
 }
 
